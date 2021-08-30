@@ -1,0 +1,455 @@
+//@version=4
+study(title="Aision Vlgo", shorttitle="Valgo", overlay=true, max_labels_count=100, max_bars_back=500, precision=0)
+len1 = input(50, minval=1, title="MA Length 1")
+len2 = input(7, minval=1, title="MA Length 2")
+len3 = input(2, minval=1, title="MA Length 3")
+src = input(close, title="Source")
+
+out1 = ema(src, len1)
+out2 = ema(src, len2)
+out3 = ema(src, len3)
+
+//RSI
+
+lenRSI = input(14, minval=1, title="RSI Length")
+up = rma(max(change(src), 0), lenRSI)
+down = rma(-min(change(src), 0), lenRSI)
+rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - (100 / (1 + up / down))
+
+//VOL
+
+VOLlength = 10
+annual = 365
+per = timeframe.isintraday or timeframe.isdaily and timeframe.multiplier == 1 ? 1 : 7
+hv = 100 * stdev(log(close / close[1]), VOLlength) * sqrt(annual / per)
+
+//Supertrend 
+
+atrPeriod = input(3, "Stoploss Length")
+factor = input(2, "Stoploss Factor")
+
+[supertrend, direction] = supertrend(factor, atrPeriod)
+
+//bodyMiddle = plot((open + close) / 2, display=display.none)
+upTrend = plot(direction < 0 ? supertrend : na, "ATR Up Trend", color = color.new(color.white, 100), style=plot.style_linebr)
+downTrend = plot(direction < 0? na : supertrend, "ATR Down Trend", color = color.new(color.white,100), style=plot.style_linebr)
+
+//fill(bodyMiddle, upTrend, color.new(color.green, 90), fillgaps=false)
+//fill(bodyMiddle, downTrend, color.new(color.red, 90), fillgaps=false)
+
+// Plots
+
+p1 = plot(out1, title="EMA 1", color=color.new(color.orange,100))
+p2 = plot(out2, title="EMA 2", color=color.new(color.yellow,100))
+p3 = plot(out3, title="EMA 3", color=color.new(color.blue,100))
+
+fill(p1, p2, color = out1 < out2 ? color.new(#2a6c43, 30) : color.new(#834e25, 30))
+fill(p2, p3, color = out2 < out3 ? color.new(#204e76, 30) : color.new(#b58c2a, 30))
+
+datasell1 = crossover(out1, out3)
+databuy1 = crossunder(out1, out3)
+takeprofit1 =  out1 < out2 and crossover(out2, out3)
+takeprofit2 =  out1 > out2 and crossunder(out2, out3)
+
+//plotshape(datasell1, style=shape.labeldown, size=size.tiny, text="Bear", textcolor=color.new(color.white,0), color=color.new(color.red,0), location=location.abovebar)
+//plotshape(databuy1, style=shape.labeldown, size=size.tiny, text="Bull", textcolor=color.new(color.white,0), color=color.new(color.green,0), location=location.abovebar)
+plotshape(takeprofit1, style=shape.arrowdown, size=size.small, text="TP", textcolor=color.new(color.white,40), color=color.new(color.white,40), location=location.abovebar)
+plotshape(takeprofit2, style=shape.arrowup, size=size.small, text="TP", textcolor=color.new(color.white,40), color=color.new(color.white,40), location=location.belowbar)
+
+//Label 
+
+dt = time - time[1]
+bulllvl = out3 > out2 and out3 > out1 and out2 > out1 ? "3" : out3 > out2 and out2 > out1 ? "2" : out3 > out2 ? "1" : "0"
+bearlvl = out3 < out2 and out3 < out1 and out2 < out1 ? "3" : out3 < out2 and out2 < out1 ? "2" : out3 < out2 ? "1" : "0"
+if barstate.islast
+    label2 = label.new(time + 50*dt, close, xloc=xloc.bar_time)
+    label.set_text(label2, text = "Stop " + tostring(round(supertrend * 1000) / 1000) + "  |  " + "VOL " + tostring(round(hv)) + "  |  " + "RSI " + tostring(round(rsi)) + "  |  " + "Bullish Level " + tostring(bulllvl) + "  |  " + "Bearish Level " + tostring(bearlvl))
+    label.set_color(label2, color.new(color.gray,50))
+    label.set_style(label2, label.style_label_left)
+    label.set_size(label2, size=size.small)
+    label.set_textcolor(label2, color.new(color.white,0))
+    label.delete(label2[1])
+
+
+label3 = label.new(bar_index, na)
+if databuy1
+    label.set_text(label3, "Bull")
+    label.set_color(label3, color.new(color.green,50))
+    label.set_yloc(label3, yloc.belowbar)
+    label.set_textcolor(label3, color.new(color.white,0))
+    label.set_style(label3, label.style_label_up)
+    
+label4 = label.new(bar_index, na)
+if datasell1
+    label.set_text(label4, "Bear")
+    label.set_color(label4, color.new(color.red,50))
+    label.set_yloc(label4, yloc.abovebar)
+    label.set_textcolor(label4, color.new(color.white,0))
+    label.set_style(label4, label.style_label_down)
+    
+    
+//Support Resistance
+    
+prd = input(defval = 15, title="Pivot Period", minval = 4, maxval = 30)
+ppsrc = input(defval = 'Close/Open', title="Source", options = ['High/Low', 'Close/Open'])
+maxnumpp = input(defval = 20, title =" Maximum Number of Pivot", minval = 5, maxval = 100)
+ChannelW = input(10, title = "Maximum Channel Width %", minval = 1)
+maxnumsr = input(10, title =" Maximum Number of S/R", minval = 1, maxval = 10)
+min_strength = input(2, title =" Minimum Strength", minval = 1, maxval = 10)
+linestyle = input(defval = 'Solid', title = "Line Style", options = ['Solid', 'Dotted', 'Dashed'])
+linewidth = input(defval = 1, title = "Line Width", minval = 1, maxval = 4)
+resistancecolor = input(defval = color.new(color.orange,80), title = "Resistance Color", type = input.color)
+supportcolor = input(defval = color.new(color.aqua,80), title = "Support Color", type = input.color)
+showpp = input(false, title = "Show Point Points")
+
+float ph = na, float pl = na
+float src1 =  ppsrc == 'High/Low' ? high : max(close, open)
+float src2 =  ppsrc == 'High/Low' ? low: min(close, open)
+ph := pivothigh(src1, prd, prd)
+pl := pivotlow(src2, prd, prd)
+
+plotshape(ph and showpp, text = "H",  style = shape.labeldown, color = na, textcolor = color.red, location = location.abovebar, transp = 0, offset = -prd)
+plotshape(pl and showpp, text = "L",  style = shape.labelup, color = na, textcolor = color.lime, location = location.belowbar, transp = 0, offset = -prd)
+
+//calculate maximum S/R channel zone width
+prdhighest =  highest(300)
+prdlowest = lowest(300)
+cwidth = (prdhighest - prdlowest) * ChannelW / 100
+
+var pivotvals= array.new_float(0)
+
+if ph or pl
+    array.unshift(pivotvals, ph ? ph : pl)
+    if array.size(pivotvals) > maxnumpp // limit the array size
+        array.pop(pivotvals)
+
+get_sr_vals(ind)=>
+    float lo = array.get(pivotvals, ind)
+    float hi = lo
+    int numpp = 0
+    for y = 0 to array.size(pivotvals) - 1
+        float cpp = array.get(pivotvals, y)
+        float wdth = cpp <= lo ? hi - cpp : cpp - lo
+        if wdth <= cwidth // fits the max channel width?
+            lo := cpp <= lo ? cpp : lo
+            hi := cpp > lo ? cpp : hi
+            numpp := numpp + 1
+    [hi, lo, numpp]  
+
+var sr_up_level = array.new_float(0)
+var sr_dn_level = array.new_float(0)
+sr_strength = array.new_float(0)
+
+find_loc(strength)=>
+    ret = array.size(sr_strength)
+    if ret > 0
+        for i = array.size(sr_strength) - 1 to 0
+            if strength <= array.get(sr_strength, i)
+                break
+            ret := i
+    ret
+
+check_sr(hi, lo, strength)=>
+    ret = true
+    if array.size(sr_up_level) > 0
+        for i = 0 to array.size(sr_up_level) - 1
+            //included?
+            if array.get(sr_up_level, i) >= lo and array.get(sr_up_level, i) <= hi  or 
+               array.get(sr_dn_level, i) >= lo and array.get(sr_dn_level, i) <= hi
+                if strength >= array.get(sr_strength, i)
+                    array.remove(sr_strength, i)
+                    array.remove(sr_up_level, i)
+                    array.remove(sr_dn_level, i)
+                    ret
+                else
+                    ret := false
+                break
+    ret
+
+//get min time
+var int btime = time
+btime := na(time[1]) ? btime : min(btime, time - time[1])
+
+round_it(value)=> 
+    round(value / syminfo.mintick) * syminfo.mintick
+
+draw_line(ycoor, Lstyle)=>
+    line.new(x1 = bar_index, 
+             y1 = ycoor, 
+             x2 = bar_index - 1, 
+             y2 = ycoor, 
+             extend = extend.both,
+             color = ycoor >= close ? resistancecolor : supportcolor, 
+             style = Lstyle, 
+             width = linewidth) 
+
+st = security(syminfo.tickerid, 'D', time)
+cl = security(syminfo.tickerid, 'D', time_close)
+opened = timenow > st and timenow < cl
+    
+draw_label(ycoor)=>
+    rate = 100 * (ycoor - close) / close
+    label.new(x = opened ? time + btime * 30 : time[100], 
+              y = ycoor, text = tostring(ycoor) + "(" + tostring(rate,'#.##') + "%)", 
+              color = ycoor >= close ? color.new(color.red,100) : color.new(color.lime,100),
+              textcolor = ycoor >= close ? color.white : color.black, 
+              style = ycoor >= close ? label.style_labeldown : label.style_labelup, 
+              xloc = xloc.bar_time, 
+              yloc = yloc.price)
+
+set_lx(lab, lin)=>
+    rate = 100 * (label.get_y(lab) - close) / close
+    label.set_text(lab, text = tostring(label.get_y(lab)) + "(" + tostring(rate,'#.##') + "%)")
+    label.set_x(lab, x = opened ? time + btime * 30 : time[100])
+    label.set_color(lab, color = label.get_y(lab) >= close ? color.new(color.red,100) : color.new(color.lime,100))
+    label.set_textcolor(lab, textcolor = label.get_y(lab) >= close ? color.white : color.black)
+    label.set_style(lab, style = label.get_y(lab) >= close ? label.style_labeldown : label.style_labelup)
+    line.set_color(lin, color = line.get_y1(lin) >= close ? resistancecolor : supportcolor) 
+
+var line l1 = na, var line l2 = na, var line l3 = na, var line l4 = na, var line l5 = na, var line l6 = na, var line l7 = na, var line l8 = na, var line l9 = na, var line l10 = na
+var label lb1 = na, var label lb2 = na, var label lb3 = na, var label lb4 = na, var label lb5 = na, var label lb6 = na, var label lb7 = na, var label lb8 = na, var label lb9 = na, var label lb10 = na
+
+set_lx(lb1, l1), set_lx(lb2, l2), set_lx(lb3, l3), set_lx(lb4, l4), set_lx(lb5, l5), set_lx(lb6, l6), set_lx(lb7, l7), set_lx(lb8, l8), set_lx(lb9, l9), set_lx(lb10, l10)
+
+if ph or pl
+    //because of new calculation, remove old S/R levels
+    array.clear(sr_up_level)
+    array.clear(sr_dn_level)
+    array.clear(sr_strength)
+    //find S/R zones
+    for x = 0 to array.size(pivotvals) - 1
+        [hi, lo, strength] = get_sr_vals(x)
+        if check_sr(hi, lo, strength)
+            loc = find_loc(strength)
+            // if strength is in first maxnumsr sr then insert it to the arrays 
+            if loc < maxnumsr and strength >= min_strength
+                array.insert(sr_strength, loc, strength)
+                array.insert(sr_up_level, loc, hi)
+                array.insert(sr_dn_level, loc, lo)
+                // keep size of the arrays = 5
+                if array.size(sr_strength) > maxnumsr
+                    array.pop(sr_strength)
+                    array.pop(sr_up_level)
+                    array.pop(sr_dn_level)
+    
+    line.delete(l1), line.delete(l2), line.delete(l3), line.delete(l4), line.delete(l5), line.delete(l6), line.delete(l7), line.delete(l8), line.delete(l9), line.delete(l10)
+    label.delete(lb1), label.delete(lb2), label.delete(lb3), label.delete(lb4), label.delete(lb5), label.delete(lb6), label.delete(lb7), label.delete(lb8), label.delete(lb9), label.delete(lb10)
+    if array.size(sr_up_level)
+        Lstyle = linestyle == 'Dashed' ? line.style_dashed :
+                 linestyle == 'Solid' ? line.style_solid :
+                 line.style_dotted
+        for x = 0 to array.size(sr_up_level) - 1
+            float mid = round_it((array.get(sr_up_level, x) + array.get(sr_dn_level, x)) / 2)
+            if x == 0
+                l1 := draw_line(mid, Lstyle)
+                lb1 := draw_label(mid)
+            if x == 1
+                l2 := draw_line(mid, Lstyle)
+                lb2 := draw_label(mid)
+            if x == 2
+                l3 := draw_line(mid, Lstyle)
+                lb3 := draw_label(mid)
+            if x == 3
+                l4 := draw_line(mid, Lstyle)
+                lb4 := draw_label(mid)
+            if x == 4
+                l5 := draw_line(mid, Lstyle)
+                lb5 := draw_label(mid)
+            if x == 5
+                l6 := draw_line(mid, Lstyle)
+                lb6 := draw_label(mid)
+            if x == 6
+                l7 := draw_line(mid, Lstyle)
+                lb7 := draw_label(mid)
+            if x == 7
+                l8 := draw_line(mid, Lstyle)
+                lb8 := draw_label(mid)
+            if x == 8
+                l9 := draw_line(mid, Lstyle)
+                lb9 := draw_label(mid)
+            if x == 9
+                l10 := draw_line(mid, Lstyle)
+                lb10 := draw_label(mid)
+
+f_crossed_over()=>
+    ret = false
+    if array.size(sr_up_level) > 0
+        for x = 0 to array.size(sr_up_level) - 1
+            float mid = round_it((array.get(sr_up_level, x) + array.get(sr_dn_level, x)) / 2)
+            if close[1] <= mid and close > mid
+                ret := true
+    ret
+
+f_crossed_under()=>
+    ret = false
+    if array.size(sr_up_level) > 0
+        for x = 0 to array.size(sr_up_level) - 1
+            float mid = round_it((array.get(sr_up_level, x) + array.get(sr_dn_level, x)) / 2)
+            if close[1] >= mid and close < mid
+                ret := true
+    ret
+    
+// Trend lines
+
+
+startyear = input(defval = 2020, title = "Start Year")
+startmonth = input(defval = 1, title = "Start Month")
+startday = input(defval = 1, title = "Start day")
+prd2 = input(defval = 20, title="Pivot Point Period", minval = 10, maxval = 50)
+PPnum = input(defval = 3, title="Number of Pivot Point to check", minval = 2, maxval = 3)
+
+float ph2 = na, float pl2 = na
+ph2 := pivothigh(prd2, prd2)
+pl2 := pivotlow(prd2, prd2)
+
+getloc(bar_i)=>
+    _ret = bar_index + prd2 - bar_i 
+    
+//get last 3  pivot highs - (hope to have Array in Pine version 5)
+t1pos = valuewhen(ph2, bar_index, 0)
+t1val = nz(high[getloc(t1pos)])
+t2pos = valuewhen(ph2, bar_index, 1)
+t2val = nz(high[getloc(t2pos)])
+t3pos = valuewhen(ph2, bar_index, 2)
+t3val = nz(high[getloc(t3pos)])
+//get last 3 pivot lows 
+b1pos = valuewhen(pl2, bar_index, 0)
+b1val = nz(low[getloc(b1pos)])
+b2pos = valuewhen(pl2, bar_index, 1)
+b2val = nz(low[getloc(b2pos)])
+b3pos = valuewhen(pl2, bar_index, 2)
+b3val = nz(low[getloc(b3pos)])
+
+getloval(l1, l2)=>
+    _ret1 = l1 == 1 ? b1val : l1 == 2 ? b2val : l1 ==3 ? b3val : 0
+    _ret2 = l2 == 1 ? b1val : l2 == 2 ? b2val : l2 ==3 ? b3val : 0
+    [_ret1, _ret2]
+
+getlopos(l1, l2)=>
+    _ret1 = l1 == 1 ? b1pos : l1 == 2 ? b2pos : l1 ==3 ? b3pos : 0
+    _ret2 = l2 == 1 ? b1pos : l2 == 2 ? b2pos : l2 ==3 ? b3pos : 0
+    [_ret1, _ret2]
+
+gethival(l1, l2)=>
+    _ret1 = l1 == 1 ? t1val : l1 == 2 ? t2val : l1 ==3 ? t3val : 0
+    _ret2 = l2 == 1 ? t1val : l2 == 2 ? t2val : l2 ==3 ? t3val :  0
+    [_ret1, _ret2]
+
+gethipos(l1, l2)=>
+    _ret1 = l1 == 1 ? t1pos : l1 == 2 ? t2pos : l1 ==3 ? t3pos : 0
+    _ret2 = l2 == 1 ? t1pos : l2 == 2 ? t2pos : l2 ==3 ? t3pos :  0
+    [_ret1, _ret2]
+
+// line definitions
+var line l11 = na, var line l21 = na, var line l31 = na
+var line t11 = na, var line t21 = na, var line t31 = na
+
+//delete old lines
+line.delete(l11), line.delete(l21), line.delete(l31)
+line.delete(t11), line.delete(t21), line.delete(t31)
+
+// there is limitation for number of lines on chart (<=50), and we use 20 uptrend lines + 20 downtrend lines (total 40) 
+maxline = 3
+
+//Line coloring
+ulcolor = color.new(color.orange,50)
+dlcolor = color.new(color.aqua,50)
+
+// loop for pivot points to check if there is possible trend line
+countlinelo = 0
+countlinehi = 0
+
+starttime = timestamp(startyear, startmonth, startday, 0, 0, 0)
+
+if time >= starttime
+    for p1 = 1 to PPnum - 1 
+        uv1 = 0.0
+        uv2 = 0.0
+        up1 = 0
+        up2 = 0
+        if countlinelo <= maxline
+            for p2 = PPnum to p1 + 1
+                [val1, val2] = getloval(p1, p2)
+                [pos1, pos2] = getlopos(p1, p2)
+                if val1 > val2
+                    diff = (val1 - val2) / (pos1 - pos2)
+                    hline = val2 + diff
+                    lloc = bar_index
+                    lval = low
+                    valid = true
+                    xc = 0
+                    for x = pos2 + 1 - prd2 to bar_index
+                        xc := x
+                        if nz(close[getloc(x + prd2)]) < hline
+                            valid := false
+                            break
+                        lloc := x
+                        lval := hline
+                        hline := hline + diff
+                    
+                        
+                    if valid
+                        uv1 := hline
+                        uv2 := val2
+                        up1 := lloc
+                        up2 := pos2
+                        break
+
+        dv1 = 0.0
+        dv2 = 0.0
+        dp1 = 0
+        dp2 = 0                
+        if countlinehi <= maxline
+            for p2 = PPnum to p1 + 1                
+                [val1, val2] = gethival(p1, p2)
+                [pos1, pos2] = gethipos(p1, p2)
+                if val1 < val2
+                    diff = (val2 - val1) / (pos1 - pos2)
+                    hline = val2 - diff
+                    lloc = bar_index
+                    lval = high
+                    valid = true
+                    xc = 0
+                    for x = pos2 + 1 - prd2 to bar_index
+                        xc := x
+                        if nz(close[getloc(x + prd2)]) > hline
+                            valid := false
+                            break
+                        lloc := x
+                        lval := hline
+                        hline := hline - diff
+                        
+                    if valid
+                        dv1 := hline
+                        dv2 := val2
+                        dp1 := lloc
+                        dp2 := pos2
+                        break
+                        
+        // if there is continues uptrend line then draw it
+        if up1 != 0 and up2 != 0 and countlinelo < maxline
+            countlinelo := countlinelo + 1
+            l11 := countlinelo == 1 ? line.new(up2 - prd2, uv2, up1, uv1) : l11
+            l21 := countlinelo == 2 ? line.new(up2 - prd2, uv2, up1, uv1) : l21
+            l31 := countlinelo == 3 ? line.new(up2 - prd2, uv2, up1, uv1) : l31
+        
+        // if there is continues downtrend line then draw it
+        if dp1 != 0 and dp2 != 0 and countlinehi < maxline
+            countlinehi := countlinehi + 1
+            t11 := countlinehi == 1 ? line.new(dp2 - prd2, dv2, dp1, dv1) : t11
+            t21 := countlinehi == 2 ? line.new(dp2 - prd2, dv2, dp1, dv1) : t21
+            t31 := countlinehi == 3 ? line.new(dp2 - prd2, dv2, dp1, dv1) : t31
+            
+            
+
+
+
+
+alertcondition(takeprofit1, title='Take Profit', message='Take Profit')
+alertcondition(takeprofit2, title='Take Profit', message='Take Profit')
+
+alertcondition(datasell1, title='Bearish Entry Signal', message='Bearish Entry Signal')
+alertcondition(databuy1, title='Bullish Entry Signal', message='Bullish Entry Signal')
+
+alertcondition(f_crossed_over(), title='Resistance Broken', message='Resistance Broken')
+alertcondition(f_crossed_under(), title='Support Broken', message='Support Broken')
